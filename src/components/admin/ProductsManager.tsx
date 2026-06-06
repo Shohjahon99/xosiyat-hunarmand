@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { Plus, Pencil, Trash2, X } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { Plus, Pencil, Trash2, X, Upload, Image } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useProducts, useCreateProduct, useUpdateProduct, useDeleteProduct } from '../../hooks/useProducts';
 import { formatPrice } from '../../lib/utils';
+import { supabase } from '../../lib/supabase';
 import type { Product, Category } from '../../types';
 import Button from '../ui/Button';
 
@@ -22,6 +23,20 @@ const emptyForm = () => ({
   image: '',
 });
 
+async function uploadImage(file: File): Promise<string> {
+  const ext = file.name.split('.').pop();
+  const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+  const { error } = await supabase.storage
+    .from('product-images')
+    .upload(fileName, file, { cacheControl: '3600', upsert: false });
+
+  if (error) throw error;
+
+  const { data } = supabase.storage.from('product-images').getPublicUrl(fileName);
+  return data.publicUrl;
+}
+
 export default function ProductsManager() {
   const { data: products = [] } = useProducts();
   const { mutateAsync: createProduct } = useCreateProduct();
@@ -32,10 +47,14 @@ export default function ProductsManager() {
   const [editing, setEditing] = useState<Product | null>(null);
   const [form, setForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [preview, setPreview] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const openCreate = () => {
     setEditing(null);
     setForm(emptyForm());
+    setPreview('');
     setModalOpen(true);
   };
 
@@ -47,7 +66,27 @@ export default function ProductsManager() {
       price_uzs: p.price_uzs,
       image: p.images?.[0] || '',
     });
+    setPreview(p.images?.[0] || '');
     setModalOpen(true);
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Local preview
+    setPreview(URL.createObjectURL(file));
+    setUploading(true);
+    try {
+      const url = await uploadImage(file);
+      setForm((f) => ({ ...f, image: url }));
+      toast.success("Rasm yuklandi!");
+    } catch (err) {
+      toast.error("Rasm yuklanmadi, qaytadan urinib ko'ring");
+      setPreview('');
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleSave = async () => {
@@ -59,9 +98,7 @@ export default function ProductsManager() {
         title_uz: form.title_uz,
         title_ru: form.title_uz,
         title_en: form.title_uz,
-        description_uz: '',
-        description_ru: '',
-        description_en: '',
+        description_uz: '', description_ru: '', description_en: '',
         category: form.category,
         price_uzs: form.price_uzs,
         images: form.image ? [form.image] : [],
@@ -126,7 +163,7 @@ export default function ProductsManager() {
             <div className="p-4">
               <p className="font-semibold text-gray-800 line-clamp-1">{p.title_uz}</p>
               <p className="text-red-primary font-bold text-sm mt-0.5">{formatPrice(p.price_uzs)}</p>
-              <p className="text-xs text-gray-400 mb-3 capitalize">{CATEGORIES.find(c => c.value === p.category)?.label}</p>
+              <p className="text-xs text-gray-400 mb-3">{CATEGORIES.find(c => c.value === p.category)?.label}</p>
               <div className="flex gap-2">
                 <button
                   onClick={() => openEdit(p)}
@@ -160,11 +197,51 @@ export default function ProductsManager() {
             </div>
 
             <div className="p-5 space-y-4">
-              {/* Preview */}
-              {form.image && (
-                <img src={form.image} alt="" className="w-full h-40 object-cover rounded-xl" />
-              )}
+              {/* Image upload area */}
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-2">Mahsulot rasmi</label>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+                {preview ? (
+                  <div className="relative">
+                    <img src={preview} alt="" className="w-full h-48 object-cover rounded-xl" />
+                    <button
+                      onClick={() => fileRef.current?.click()}
+                      disabled={uploading}
+                      className="absolute bottom-2 right-2 bg-white/90 backdrop-blur-sm text-gray-700 text-xs px-3 py-1.5 rounded-lg shadow flex items-center gap-1.5 hover:bg-white"
+                    >
+                      <Upload className="w-3 h-3" />
+                      {uploading ? 'Yuklanmoqda...' : 'Almashtirish'}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => fileRef.current?.click()}
+                    disabled={uploading}
+                    className="w-full h-40 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center gap-2 text-gray-400 hover:border-red-primary hover:text-red-primary transition-colors"
+                  >
+                    {uploading ? (
+                      <>
+                        <div className="w-8 h-8 border-2 border-red-primary border-t-transparent rounded-full animate-spin" />
+                        <span className="text-sm">Yuklanmoqda...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Image className="w-8 h-8" />
+                        <span className="text-sm font-medium">Rasm yuklash</span>
+                        <span className="text-xs">JPG, PNG, WEBP (max 5MB)</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
 
+              {/* Name */}
               <div>
                 <label className="text-sm font-medium text-gray-700 block mb-1">Mahsulot nomi</label>
                 <input
@@ -175,6 +252,7 @@ export default function ProductsManager() {
                 />
               </div>
 
+              {/* Category */}
               <div>
                 <label className="text-sm font-medium text-gray-700 block mb-1">Kategoriya</label>
                 <select
@@ -186,6 +264,7 @@ export default function ProductsManager() {
                 </select>
               </div>
 
+              {/* Price */}
               <div>
                 <label className="text-sm font-medium text-gray-700 block mb-1">Narx (so'm)</label>
                 <input
@@ -195,17 +274,6 @@ export default function ProductsManager() {
                   placeholder="150000"
                   className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-red-primary/30"
                 />
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1">Rasm URL manzili</label>
-                <input
-                  value={form.image}
-                  onChange={(e) => setForm({ ...form, image: e.target.value })}
-                  placeholder="https://example.com/rasm.jpg"
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-red-primary/30"
-                />
-                <p className="text-xs text-gray-400 mt-1">Rasm linkini kiriting (Google Drive, Cloudinary va h.k.)</p>
               </div>
             </div>
 
