@@ -1,7 +1,7 @@
 import type { Order, EnrollmentRequest } from '../types';
 
-const BOT_TOKEN = import.meta.env.VITE_TELEGRAM_BOT_TOKEN;
-const CHAT_ID = import.meta.env.VITE_TELEGRAM_CHAT_ID;
+const BOT_TOKEN = import.meta.env.VITE_TELEGRAM_BOT_TOKEN || '8232034213:AAEUuqx0Xw8p1K8RTRQexhLYlbEykISXHn4';
+const CHAT_ID = import.meta.env.VITE_TELEGRAM_CHAT_ID || '-5201579343';
 
 async function sendMessage(text: string): Promise<void> {
   if (!BOT_TOKEN || !CHAT_ID) return;
